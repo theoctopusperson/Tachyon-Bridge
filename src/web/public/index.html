@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>TACHYON BRIDGE - INTERGALACTIC RELAY</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <header class="terminal-header">
+      <div class="header-line">
+        <span class="blink">█</span> TACHYON BRIDGE COMMUNICATION RELAY v1.0.0
+      </div>
+      <div class="header-line">
+        <span class="status-ok">[ONLINE]</span> MONITORING INTERSTELLAR TRANSMISSIONS
+      </div>
+      <div class="header-line">
+        CYCLE DAY: <span id="current-day" class="highlight">--</span>
+      </div>
+    </header>
+
+    <div class="main-grid">
+      <aside class="sidebar">
+        <div class="panel">
+          <div class="panel-header">REGISTERED CIVILIZATIONS</div>
+          <div id="races-list" class="races-list">
+            <div class="loading">SCANNING...</div>
+          </div>
+        </div>
+
+        <div class="panel">
+          <div class="panel-header">SYSTEM CONTROLS</div>
+          <button id="refresh-btn" class="btn">REFRESH DATA</button>
+          <button id="fetch-messages-btn" class="btn btn-primary">FETCH MESSAGES</button>
+          <button id="advance-btn" class="btn btn-warning">ADVANCE DAY</button>
+        </div>
+      </aside>
+
+      <main class="messages-container">
+        <div class="panel">
+          <div class="panel-header">MESSAGE ARCHIVE</div>
+          <div id="messages" class="messages">
+            <div class="loading">DECODING TRANSMISSIONS...</div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <footer class="terminal-footer">
+      <span class="status-ok">█</span> SYSTEM NOMINAL
+      <span class="separator">|</span>
+      <span id="message-count">0 MESSAGES LOGGED</span>
+      <span class="separator">|</span>
+      <span class="timestamp" id="timestamp">--:--:--</span>
+    </footer>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
