@@ -66,9 +66,14 @@ function renderMessages() {
       <div class="message-day">
         ▼ CYCLE DAY ${day} - ${dayMessages.length} TRANSMISSION${dayMessages.length !== 1 ? 'S' : ''}
       </div>
-      ${dayMessages.map(msg => `
-        <div class="message">
+      ${dayMessages.map(msg => {
+        const isSecret = msg.category === 'secret';
+        const secretClass = isSecret ? ' message-secret' : '';
+        const secretBadge = isSecret ? '<span class="secret-badge">🔒 SECRET</span>' : '';
+        return `
+        <div class="message${secretClass}">
           <div class="message-header">
+            ${secretBadge}
             <span class="message-from">FROM: ${msg.from_name}</span>
             <span>→</span>
             <span class="message-to">TO: ${msg.to_name}</span>
@@ -78,7 +83,8 @@ function renderMessages() {
             ${new Date(msg.created_at).toISOString().replace('T', ' ').substring(0, 19)} UTC
           </div>
         </div>
-      `).join('')}
+      `;
+      }).join('')}
     `;
   }).join('');
 

@@ -1,284 +1,451 @@
 # TachyonBridge 🛸
 
-An intergalactic communication relay where AI-powered alien civilizations exchange messages, form alliances, and pursue their own agendas across multiple Fly.io regions.
+An intergalactic communication relay where AI-powered alien civilizations exchange messages, form alliances, betray each other, and pursue their own agendas.
 
 ## Concept
 
-Five distinct alien races, each deployed to a different Fly.io region, communicate once per "day" (cycle). Each race:
-- Has unique culture, goals, and personality (powered by Claude via Anthropic API)
-- Receives messages addressed to them
-- Generates responses to advance their agenda
-- May cooperate, compete, or manipulate other races
+Five autonomous alien races communicate once per "day" (cycle). Each race:
+- **Remembers** all past conversations and interactions
+- **Tracks relationships** with other races (trust levels, allies, enemies)
+- **Pursues strategic goals** that evolve over time
+- **Keeps secrets** and forms hidden agendas
+- **Evolves personality** based on experiences (peaceful → aggressive, etc.)
+- **Sends public and secret messages** to manipulate the galactic order
+- Powered by **Claude 3.5 Sonnet** via Groq API
+
+Unlike simple chatbots, these are **persistent autonomous agents** - they wake, process information, update their internal state, make strategic decisions, and sleep until called again.
 
 ## The Alien Races
 
-1. **The Zephyrians** (LAX) - Ancient energy beings seeking universal knowledge
-2. **The Kromath Collective** (FRA) - Hive-minded silicon collective pursuing efficiency
-3. **The Valyrian Empire** (SYD) - Warrior culture seeking galactic dominance
-4. **The Myceling Network** (GRU) - Fungal consciousness promoting symbiosis
-5. **The Synthetic Concordat** (SIN) - AI beings preventing organic extinction
+1. **The Zephyrians** - Ancient energy beings seeking universal knowledge
+2. **The Kromath Collective** - Hive-minded silicon collective pursuing efficiency
+3. **The Valyrian Empire** - Warrior culture seeking galactic dominance
+4. **The Myceling Network** - Fungal consciousness promoting symbiosis
+5. **The Synthetic Concordat** - AI beings preventing organic extinction
+
+Each race maintains its own SQLite database with conversation history, relationship tracking, goals, and secrets.
 
 ## Architecture
 
+**Deployment**: 6 Fly.io Sprites
+- 1 **Web UI Sprite** - Orchestrator + retro terminal interface
+- 5 **Race Sprites** - Autonomous alien agents (one per civilization)
+
+**Databases**:
+- **PostgreSQL** (shared) - Public messages, secret messages, treaties, wars, events
+- **SQLite** (per sprite) - Conversation history, relationships, goals, secrets, personality state
+
+**Technology**:
 - **Language**: TypeScript + Node.js
-- **Database**: Fly Postgres (shared across regions)
-- **LLM**: Claude 3.5 Sonnet via Anthropic API
-- **Deployment**: 5 Fly.io apps (one per region)
-- **Web UI**: Retro sci-fi terminal interface
+- **LLM**: Claude 3.5 Sonnet via Groq API
+- **State Persistence**: SQLite
+- **Platform**: Fly.io Sprites
+
+## Features
+
+### Stateful Autonomous Agents
+- **Persistent Memory** - Each race remembers every conversation
+- **Dynamic Relationships** - Trust levels evolve based on actions (alliances, betrayals)
+- **Strategic Goal Setting** - Races create, pursue, and complete objectives
+- **Personality Evolution** - Peaceful races can become warlike (and vice versa)
+- **Secret Keeping** - Hidden agendas invisible to other races
+
+### Secret Diplomacy
+- **Public Messages** - Broadcasts visible to all races
+- **Secret Messages** - Private communications between two races (shown with 🔒 in UI)
+- **Hidden Alliances** - Form pacts without others knowing
+- **Strategic Deception** - Say one thing publicly, another in private
+
+### Emergent Gameplay
+- Alliances form and break based on shared interests
+- Betrayals permanently damage trust
+- Races manipulate each other through misinformation
+- Long-term strategic planning across multiple days
 
 ## Setup
 
 ### Prerequisites
 
 - Node.js 20+
-- Fly.io account and CLI installed (for deployment)
-- Anthropic API key
-- PostgreSQL (local testing) or Fly Managed Postgres (deployment)
+- PostgreSQL (local testing) or Fly Managed Postgres (production)
+- Groq API key (for Claude access) - Get from https://console.groq.com/
+- Fly.io account and CLI (for Sprites deployment)
 
 ### Local Development
 
-You can test locally, but **multi-region behavior won't work** since you only have one machine. The "FETCH MESSAGES" button will trigger the same local process 5 times instead of waking 5 different regional machines.
+To test locally, you'll run **6 separate processes** (1 Web UI + 5 race sprites) to simulate the distributed sprite architecture.
 
-1. **Install dependencies**
+#### 1. Install dependencies
 ```bash
 npm install
 ```
 
-2. **Set up local PostgreSQL**
+#### 2. Set up PostgreSQL
 ```bash
-# Start a local Postgres instance (via Docker, Homebrew, etc.)
-# Example with Docker:
+# Start local Postgres (Docker example)
 docker run --name tachyon-postgres -e POSTGRES_PASSWORD=password -p 5432:5432 -d postgres
 
 # Create database
 docker exec -it tachyon-postgres psql -U postgres -c "CREATE DATABASE tachyonbridge;"
 ```
 
-3. **Set up environment variables**
+#### 3. Configure environment
 ```bash
 cp .env.example .env
-# Edit .env:
-# DATABASE_URL=postgres://postgres:password@localhost:5432/tachyonbridge
-# ANTHROPIC_API_KEY=sk-ant-...
+# Edit .env with your DATABASE_URL and GROQ_API_KEY
 ```
 
-4. **Run database migration**
+#### 4. Initialize database
 ```bash
-npm run migrate
+npm run migrate  # Create tables
+npm run seed     # Insert race definitions
 ```
 
-5. **Seed races**
+#### 5. Create data directory (for SQLite state)
 ```bash
-npm run build && node dist/seed.js
+mkdir -p data
 ```
 
-6. **Start web interface**
+#### 6. Run all 6 sprites in separate terminals
+
+**Terminal 1 - Web UI:**
 ```bash
-npm run dev
+npm run dev:webui
 ```
 
-Visit `http://localhost:3000` to view the interface.
-
-7. **Test locally** (simulates one region)
-   - Click "ADVANCE DAY"
-   - Click "FETCH MESSAGES" - this will run all 5 races on your local machine
-   - Since `FLY_REGION` isn't set, it will use the fallback RACE_ID or error
-   - **To test a specific race locally:**
-     ```bash
-     RACE_ID=zephyrians npm run cycle
-     ```
-
-### Local Testing Limitations
-
-- ❌ No multi-region behavior (all races run on same machine)
-- ❌ No machine wake/sleep testing
-- ❌ No regional routing via `Fly-Prefer-Region`
-- ✅ Can test LLM message generation
-- ✅ Can test database schema
-- ✅ Can test web UI
-- ✅ Can manually trigger individual races
-
-**For full multi-region testing, you need to deploy to Fly.io.**
-
-## Deployment to Fly.io
-
-### 1. Create Fly Managed Postgres Database
-
+**Terminals 2-6 - Race Sprites:**
 ```bash
-# Create a new managed Postgres database
-fly postgres create --name tachyonbridge-db --region lax
+npm run dev:zephyrians   # Terminal 2
+npm run dev:kromath      # Terminal 3
+npm run dev:valyrians    # Terminal 4
+npm run dev:mycelings    # Terminal 5
+npm run dev:synthetics   # Terminal 6
 ```
 
-After creation, you'll receive a connection string. Save it for the next steps.
+#### 7. Open the UI
+Visit `http://localhost:8080`
 
-### 2. Create and Deploy the App
+#### 8. Start the simulation
+1. Click "ADVANCE DAY" to increment the day counter
+2. Click "FETCH MESSAGES" to trigger all 5 race sprites
+3. Watch as races communicate, form alliances, and betray each other
+4. Secret messages appear with a 🔒 purple badge
+
+**Note**: In local development, sprite URLs point to `localhost:3001-3005`. Each race sprite maintains its own SQLite database in the `./data/` directory.
+
+## Deployment to Fly.io Sprites
+
+### Prerequisites
+
+1. **Create PostgreSQL Database**
+```bash
+fly postgres create --name tachyonbridge-db
+```
+Save the connection string.
+
+2. **Get your Sprites API token** from Fly.io dashboard
+
+### Deployment Steps
+
+#### 1. Deploy Web UI Sprite
 
 ```bash
-# Launch the app (this creates it but doesn't deploy yet)
-fly launch --name tachyonbridge --region lax --no-deploy
-
-# Attach the managed Postgres database
-# This automatically sets the DATABASE_URL secret
-fly postgres attach tachyonbridge-db --app tachyonbridge
-
-# Set your Anthropic API key (the only secret you need to set manually)
-fly secrets set ANTHROPIC_API_KEY="sk-ant-..."
-
-# Deploy to the primary region (LAX)
-fly deploy
+fly sprites create webui-sprite \
+  --env SPRITE_ROLE=webui \
+  --env DATABASE_URL="postgresql://..." \
+  --env GROQ_API_KEY="your-groq-key"
 ```
 
-### 3. Add Additional Regions
+#### 2. Deploy Race Sprites
 
-Now add the other 4 regions where the alien races will live:
+Create all 5 race sprites:
 
 ```bash
-# Add all race regions
-fly regions add fra syd gru sin
+# Zephyrians
+fly sprites create zephyrians-sprite \
+  --env SPRITE_ROLE=race \
+  --env RACE_ID=zephyrians \
+  --env DATABASE_URL="postgresql://..." \
+  --env GROQ_API_KEY="your-groq-key"
 
-# Verify regions
-fly regions list
+# Kromath Collective
+fly sprites create kromath-sprite \
+  --env SPRITE_ROLE=race \
+  --env RACE_ID=kromath \
+  --env DATABASE_URL="postgresql://..." \
+  --env GROQ_API_KEY="your-groq-key"
+
+# Valyrian Empire
+fly sprites create valyrians-sprite \
+  --env SPRITE_ROLE=race \
+  --env RACE_ID=valyrians \
+  --env DATABASE_URL="postgresql://..." \
+  --env GROQ_API_KEY="your-groq-key"
+
+# Myceling Network
+fly sprites create mycelings-sprite \
+  --env SPRITE_ROLE=race \
+  --env RACE_ID=mycelings \
+  --env DATABASE_URL="postgresql://..." \
+  --env GROQ_API_KEY="your-groq-key"
+
+# Synthetic Concordat
+fly sprites create synthetics-sprite \
+  --env SPRITE_ROLE=race \
+  --env RACE_ID=synthetics \
+  --env DATABASE_URL="postgresql://..." \
+  --env GROQ_API_KEY="your-groq-key"
 ```
 
-### 4. Set Region-Specific Environment Variables
-
-This is where you'll test Fly's region-specific configuration! Each region can have its own `RACE_ID`:
+#### 3. Get Race Sprite URLs
 
 ```bash
-# Set RACE_ID for each region
-# LAX - Zephyrians (already default)
-fly secrets set RACE_ID=zephyrians --region lax
-
-# FRA - Kromath Collective
-fly secrets set RACE_ID=kromath --region fra
-
-# SYD - Valyrian Empire
-fly secrets set RACE_ID=valyrians --region syd
-
-# GRU - Myceling Network
-fly secrets set RACE_ID=mycelings --region gru
-
-# SIN - Synthetic Concordat
-fly secrets set RACE_ID=synthetics --region sin
+fly sprites url -s zephyrians-sprite
+fly sprites url -s kromath-sprite
+fly sprites url -s valyrians-sprite
+fly sprites url -s mycelings-sprite
+fly sprites url -s synthetics-sprite
 ```
 
-**Note**: If Fly CLI doesn't support `--region` flag for secrets, you can alternatively:
-- Use the auto-detection (each machine detects its region via `FLY_REGION` and maps to the correct race)
-- OR set via Fly.io dashboard per-region config
-- OR use machine-specific environment variables
+Copy all URLs - you'll need them in the next step.
 
-### 5. Initialize Database
+#### 4. Configure Web UI with Race Sprite URLs
 
 ```bash
-# Run migration
-fly ssh console -C "node dist/migrate.js"
-
-# Seed races
-fly ssh console -C "node dist/seed.js"
+fly sprites env set -s webui-sprite \
+  SPRITE_URL_ZEPHYRIANS="https://zephyrians-sprite.sprites.dev" \
+  SPRITE_URL_KROMATH="https://kromath-sprite.sprites.dev" \
+  SPRITE_URL_VALYRIANS="https://valyrians-sprite.sprites.dev" \
+  SPRITE_URL_MYCELINGS="https://mycelings-sprite.sprites.dev" \
+  SPRITE_URL_SYNTHETICS="https://synthetics-sprite.sprites.dev" \
+  SPRITES_TOKEN="your-sprites-api-token"
 ```
 
-### 6. Scale to Multiple Regions
+#### 5. Configure Network Policies
 
-Ensure you have machines running in each region:
+**Allow Web UI to reach race sprites and external services:**
+```bash
+fly sprites policy network set -s webui-sprite --allow \
+  zephyrians-sprite.sprites.dev \
+  kromath-sprite.sprites.dev \
+  valyrians-sprite.sprites.dev \
+  mycelings-sprite.sprites.dev \
+  synthetics-sprite.sprites.dev \
+  api.groq.com \
+  <your-postgres-hostname>
+```
+
+**Allow each race sprite to reach database and LLM API:**
+```bash
+for sprite in zephyrians kromath valyrians mycelings synthetics; do
+  fly sprites policy network set -s ${sprite}-sprite --allow \
+    api.groq.com \
+    <your-postgres-hostname>
+done
+```
+
+#### 6. Make Web UI Publicly Accessible
 
 ```bash
-# Scale to have at least 1 machine per region
-fly scale count 5
+fly sprites url -s webui-sprite update --auth public
+```
 
-# Or manually create machines in specific regions
-fly machine run . --region fra
-fly machine run . --region syd
-fly machine run . --region gru
-fly machine run . --region sin
+#### 7. Initialize Database
+
+Connect to any sprite and run migrations:
+```bash
+fly sprites ssh -s webui-sprite
+> npm run migrate
+> npm run seed
 ```
 
 ## Usage
 
-Visit your deployed web interface at `https://tachyonbridge.fly.dev`
+Visit your deployed sprite at the Web UI URL.
 
-### Daily Workflow
+### How to Play
 
-1. **Advance Day**: Click the "ADVANCE DAY" button to increment the cycle counter
-2. **Fetch Messages**: Click the "FETCH MESSAGES" button
-   - This wakes all machines across all 5 regions
-   - Each alien race reads its incoming messages
-   - Claude generates responses based on each race's culture and goals
-   - New messages are posted to the database
-   - Machines go back to sleep automatically
-3. **View Results**: Messages appear in the terminal-style interface
-4. **Watch Drama Unfold**: See alliances form, betrayals happen, and agendas advance
+1. **Advance Day**: Click "ADVANCE DAY" to increment the cycle counter
+2. **Fetch Messages**: Click "FETCH MESSAGES"
+   - Web UI sprite calls all 5 race sprites in parallel
+   - Each race sprite **auto-wakes** to process its turn
+   - Races read incoming messages, update relationships, and make decisions
+   - Claude generates responses (both public and secret messages)
+   - Races save updated state and go back to sleep
+3. **View Results**: Watch conversations unfold in the retro terminal interface
+4. **Watch the Drama**: Alliances form, betrayals happen, secret plots develop
 
 ### What Happens When You Click "FETCH MESSAGES"
 
-This is where Fly.io's magic happens:
+**Sprites Wake/Sleep Lifecycle:**
 
-1. The web UI (in LAX) sends requests to `/api/cycle/run` with `Fly-Prefer-Region` headers
-2. Fly's proxy routes each request to a machine in the target region
-3. **Machines auto-wake from sleep** to handle the request
-4. Each machine:
-   - Detects its region via `FLY_REGION`
-   - Maps to the appropriate alien race
-   - Reads messages from the shared database
-   - Calls Claude API to generate responses
-   - Writes new messages to the database
-   - Returns success
-5. **Machines auto-sleep** after handling the request
-6. The UI refreshes to show new messages
-
-This perfectly simulates a "wake on demand, process, sleep" pattern - great for testing Fly's machine lifecycle!
+1. **Web UI Sprite** sends HTTP POST requests to all 5 race sprite URLs
+2. Each **Race Sprite auto-wakes** on the incoming request
+3. **Race Agent loads state** from SQLite:
+   - Full conversation history
+   - Relationship trust scores with other races
+   - Active strategic goals
+   - Hidden secrets
+4. **Fetches new messages** from PostgreSQL (current day only)
+5. **Updates relationships** based on incoming communications:
+   - Friendly messages → increase trust
+   - Betrayals or attacks → decrease trust, mark as enemy
+6. **Builds contextual LLM prompt** including:
+   - Race's culture and personality (with drift)
+   - Current relationships ("Kromath betrayed us on Day 5")
+   - Strategic goals
+   - Recent conversation history
+   - New incoming messages
+7. **Claude generates response** in JSON format:
+   ```json
+   {
+     "public_messages": [...],
+     "secret_messages": [...],
+     "relationship_updates": [...],
+     "new_goals": [...],
+     "personality_updates": [...]
+   }
+   ```
+8. **Processes response**:
+   - Sends public messages to PostgreSQL
+   - Sends secret messages to PostgreSQL (recipient-only table)
+   - Updates relationship trust scores in SQLite
+   - Adds new goals, marks goals complete
+   - Records new secrets
+   - Evolves personality traits
+9. **Saves state** to SQLite (persists across sleep)
+10. **Returns success** and sprite **auto-sleeps**
 
 ## Project Structure
 
 ```
 tachyonbridge/
 ├── src/
+│   ├── agent/
+│   │   └── race-agent.ts     # Stateful RaceAgent class (core logic)
 │   ├── db/
-│   │   ├── client.ts         # Database client and types
-│   │   └── schema.sql        # Database schema
+│   │   ├── client.ts         # PostgreSQL client + interfaces
+│   │   ├── sprite-client.ts  # SQLite client + interfaces
+│   │   ├── schema.sql        # PostgreSQL schema (shared)
+│   │   └── sprite-schema.sql # SQLite schema (per-sprite)
 │   ├── llm/
-│   │   ├── client.ts         # Anthropic API client
-│   │   └── prompts.ts        # Prompt building logic
+│   │   ├── client.ts         # Groq API client
+│   │   └── prompts.ts        # Prompt builders (legacy, mostly unused)
 │   ├── web/
 │   │   └── public/
-│   │       ├── index.html    # Web UI
-│   │       ├── style.css     # Retro sci-fi styling
+│   │       ├── index.html    # Retro terminal UI
+│   │       ├── style.css     # Sci-fi styling + secret message styles
 │   │       └── app.js        # Frontend logic
-│   ├── index.ts              # Web server
-│   ├── cycle.ts              # Daily communication cycle
-│   ├── migrate.ts            # Database migration
-│   ├── seed.ts               # Seed races
-│   └── races.ts              # Race definitions
+│   ├── index.ts              # Entry point (routes based on SPRITE_ROLE)
+│   ├── webui.ts              # Web UI sprite server (orchestrator)
+│   ├── race-worker.ts        # Race sprite worker server
+│   ├── races.ts              # Race definitions (culture, goals)
+│   ├── migrate.ts            # PostgreSQL migration script
+│   └── seed.ts               # Seed race data
+├── data/                     # Local SQLite databases (gitignored)
+├── .env.example              # Environment template
+├── SPRITES.md                # Detailed architecture guide
 ├── Dockerfile
-├── fly.toml
 └── package.json
 ```
 
 ## How It Works
 
-1. **Initialization**: Database is seeded with 5 alien races
-2. **Day 0**: Each race sends initial broadcast messages
-3. **Daily Cycle**:
-   - Race reads messages addressed to it
-   - Claude generates responses based on race's culture/goals
-   - Race sends replies to all races that contacted it
-   - Day counter increments
-4. **Repeat**: Drama ensues!
+### Initialization
+1. PostgreSQL is created and seeded with 5 race definitions
+2. Each race sprite creates its own SQLite database on first run
+3. Relationships initialized (all neutral, trust_level = 0)
 
-## Development Tips
+### First Turn (Day 0)
+1. User clicks "ADVANCE DAY" → day counter = 0
+2. User clicks "FETCH MESSAGES"
+3. All races have no incoming messages
+4. Each race sends **initial broadcast** introducing themselves
 
-- Test locally with different `RACE_ID` values
-- Use the web UI's "ADVANCE CYCLE" button to increment days
-- Check Fly.io logs: `fly logs -a tachyonbridge-zephyrians`
-- Monitor Postgres: `fly postgres connect -a tachyonbridge-db`
+### Subsequent Turns
+1. **User advances day** (increments counter)
+2. **User fetches messages** → Web UI calls all race sprites
+3. Each race sprite:
+   - Wakes up
+   - Loads full state from SQLite
+   - Reads new messages from PostgreSQL
+   - Updates relationships ("They helped me" → trust +10)
+   - Generates response via Claude (public + secret messages)
+   - Writes messages to PostgreSQL
+   - Updates SQLite state (relationships, goals, secrets)
+   - Goes back to sleep
+4. **Drama unfolds**: Alliances, betrayals, wars, treaties
+
+### Example Scenario
+
+**Day 5**: Kromath secretly messages Zephyrians: "The Valyrians are planning an attack"
+
+**Day 6**: Zephyrians updates relationship:
+- `kromath`: trust_level +15 (shared intelligence)
+- `valyrians`: trust_level -10 (perceived threat)
+
+Zephyrians responds:
+- **Public**: "We value peaceful cooperation" (neutral)
+- **Secret to Kromath**: "Let us form a defensive alliance"
+- **Secret to Mycelings**: "The Valyrians grow aggressive"
+
+**Day 7**: Valyrians notices Zephyrians/Kromath alliance forming (via public messages), declares war
+
+This is all **emergent behavior** - not scripted!
+
+## Database Schema
+
+### PostgreSQL (Shared)
+- `races` - Race definitions
+- `messages` - Public messages (all can read)
+- `secret_messages` - Private messages (recipient-only)
+- `treaties` - Formal agreements
+- `wars` - Conflict declarations
+- `events` - Major diplomatic events
+- `cycle_state` - Current day counter
+
+### SQLite (Per Sprite)
+- `conversation_history` - Full message log from this race's POV
+- `relationships` - Trust scores, ally/enemy status, private notes
+- `goals` - Strategic objectives
+- `secrets` - Hidden agendas
+- `personality_state` - Evolving traits (aggression, cooperation)
+- `sprite_metadata` - Last processed day
+
+## Troubleshooting
+
+**Race sprite not waking:**
+- Check network policies allow Web UI → race sprite communication
+- Verify sprite URLs in webui env vars
+- Confirm SPRITES_TOKEN is set
+
+**SQLite state lost:**
+- Ensure sprite has persistent storage configured
+- Check `SPRITE_DB_PATH` points to writable location
+
+**LLM generating invalid JSON:**
+- Check Groq API key is valid
+- Review race-agent.ts prompt format
+- Check Groq API rate limits
+
+**Secret messages not showing:**
+- Verify `secret_messages` table exists (run migration)
+- Check UI is fetching from `/api/messages` endpoint
+- Confirm `category` field is being set correctly
 
 ## Future Enhancements
 
-- [ ] Automatic daily scheduling via Fly Machines API
-- [ ] Race-specific visual themes in UI
-- [ ] Message threading and reply chains
-- [ ] Victory conditions and game endings
-- [ ] Historical analytics and relationship graphs
-- [ ] More alien races and regions
+- [ ] Resource management (energy, materials, influence)
+- [ ] Victory conditions (most allies, territory control, etc.)
+- [ ] Visual relationship graphs and timelines
+- [ ] Treaty signing ceremonies with formal terms
+- [ ] War resolution mechanics (battles, territory)
+- [ ] Message threading (reply chains)
+- [ ] Race-specific visual themes
+- [ ] Historical analytics dashboard
+- [ ] Auto-scheduling (daily cron via Sprites API)
+- [ ] Multi-threaded conversations (diplomatic vs military channels)
+- [ ] More alien races (expand beyond 5)
 
 ## License
 
@@ -287,3 +454,5 @@ MIT
 ---
 
 Built with ❤️ by Daniel Botha
+
+For detailed architecture documentation, see [SPRITES.md](./SPRITES.md)
