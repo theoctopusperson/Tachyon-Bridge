@@ -36,8 +36,44 @@ function renderRaces() {
     <div class="race-item">
       <div class="race-name">${race.name}</div>
       <div class="race-region">REGION: ${race.region.toUpperCase()}</div>
+      <div class="race-day">DAY: ${race.currentDay || 0}</div>
     </div>
   `).join('');
+}
+
+// Render resources
+function renderResources() {
+  const resourcesList = document.getElementById('resources-list');
+
+  if (races.length === 0) {
+    resourcesList.innerHTML = '<div class="loading">NO DATA AVAILABLE</div>';
+    return;
+  }
+
+  resourcesList.innerHTML = races.map(race => {
+    const resources = race.resources || [];
+    const energy = resources.find(r => r.resource_type === 'energy')?.amount || 0;
+    const intelligence = resources.find(r => r.resource_type === 'intelligence')?.amount || 0;
+    const influence = resources.find(r => r.resource_type === 'influence')?.amount || 0;
+
+    return `
+      <div class="resource-item">
+        <div class="resource-race">${race.name}</div>
+        <div class="resource-bar">
+          <div class="resource-label">⚡ Energy:</div>
+          <div class="resource-value">${energy}</div>
+        </div>
+        <div class="resource-bar">
+          <div class="resource-label">🧠 Intel:</div>
+          <div class="resource-value">${intelligence}</div>
+        </div>
+        <div class="resource-bar">
+          <div class="resource-label">👑 Influence:</div>
+          <div class="resource-value">${influence}</div>
+        </div>
+      </div>
+    `;
+  }).join('');
 }
 
 // Render messages
@@ -70,15 +106,29 @@ function renderMessages() {
         const isSecret = msg.category === 'secret';
         const secretClass = isSecret ? ' message-secret' : '';
         const secretBadge = isSecret ? '<span class="secret-badge">🔒 SECRET</span>' : '';
+        const hasCode = msg.code ? '<span class="code-badge">💻 +CODE</span>' : '';
+
+        let codeSection = '';
+        if (msg.code) {
+          codeSection = `
+            <div class="message-code">
+              <div class="code-header">📦 ATTACHED CODE:</div>
+              <pre class="code-block">${escapeHtml(msg.code)}</pre>
+            </div>
+          `;
+        }
+
         return `
         <div class="message${secretClass}">
           <div class="message-header">
             ${secretBadge}
+            ${hasCode}
             <span class="message-from">FROM: ${msg.from_name}</span>
             <span>→</span>
             <span class="message-to">TO: ${msg.to_name}</span>
           </div>
           <div class="message-content">${escapeHtml(msg.content)}</div>
+          ${codeSection}
           <div class="message-timestamp">
             ${new Date(msg.created_at).toISOString().replace('T', ' ').substring(0, 19)} UTC
           </div>
@@ -106,59 +156,42 @@ function updateFooter() {
 // Render all
 function render() {
   renderRaces();
+  renderResources();
   renderMessages();
   updateFooter();
 }
 
-// Fetch messages from all regions
-async function fetchMessages() {
-  if (!confirm('FETCH MESSAGES FROM ALL CIVILIZATIONS?\n\nThis will wake all regional machines and trigger each alien race to send messages.')) {
+// Run all turns
+async function runAllTurns() {
+  if (!confirm('RUN ALL RACE TURNS?\n\nThis will trigger all race sprites to:\n- Process incoming messages\n- Decide whether to execute code\n- Generate responses\n- Send new messages')) {
     return;
   }
 
-  const button = document.getElementById('fetch-messages-btn');
+  const button = document.getElementById('run-turns-btn');
   button.disabled = true;
-  button.textContent = 'FETCHING...';
+  button.textContent = 'RUNNING...';
 
   try {
     const response = await fetch('/api/cycle/run-all', { method: 'POST' });
     const result = await response.json();
 
     if (result.success) {
-      alert(`MESSAGES RECEIVED!\n\nSuccessfully contacted ${result.triggered}/${result.total} civilizations.`);
-      // Refresh data to show new messages
+      alert(`TURNS COMPLETED!\n\nSuccessfully ran ${result.triggered}/${result.total} races.`);
+      // Refresh data to show new messages and updated resources
       await fetchData();
     } else {
-      const failedRegions = result.results
+      const failedRaces = result.results
         .filter(r => r.status === 'rejected')
-        .map(r => r.region)
+        .map(r => r.raceId)
         .join(', ');
-      alert(`PARTIAL COMMUNICATIONS FAILURE\n\nSucceeded: ${result.triggered}/${result.total}\nFailed regions: ${failedRegions}`);
+      alert(`PARTIAL FAILURE\n\nSucceeded: ${result.triggered}/${result.total}\nFailed races: ${failedRaces}`);
     }
   } catch (error) {
-    console.error('Failed to fetch messages:', error);
-    alert('ERROR: Failed to fetch messages');
+    console.error('Failed to run turns:', error);
+    alert('ERROR: Failed to run turns');
   } finally {
     button.disabled = false;
-    button.textContent = 'FETCH MESSAGES';
-  }
-}
-
-// Advance cycle
-async function advanceCycle() {
-  if (!confirm('ADVANCE TO NEXT DAY?\n\nThis will increment the day counter.\n\nYou should do this BEFORE fetching messages.')) {
-    return;
-  }
-
-  try {
-    const response = await fetch('/api/cycle/advance', { method: 'POST' });
-    const cycle = await response.json();
-    currentDay = cycle.current_day;
-    updateFooter();
-    alert(`DAY ADVANCED TO ${currentDay}\n\nNow click "FETCH MESSAGES" to receive communications from all civilizations.`);
-  } catch (error) {
-    console.error('Failed to advance day:', error);
-    alert('ERROR: Failed to advance day');
+    button.textContent = 'RUN ALL TURNS';
   }
 }
 
@@ -171,8 +204,7 @@ function escapeHtml(text) {
 
 // Event listeners
 document.getElementById('refresh-btn').addEventListener('click', fetchData);
-document.getElementById('fetch-messages-btn').addEventListener('click', fetchMessages);
-document.getElementById('advance-btn').addEventListener('click', advanceCycle);
+document.getElementById('run-turns-btn').addEventListener('click', runAllTurns);
 
 // Update timestamp every second
 setInterval(() => {

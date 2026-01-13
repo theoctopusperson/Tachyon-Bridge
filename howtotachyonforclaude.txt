@@ -1,0 +1,133 @@
+# Tachyon Bridge - Race Sprite Setup Guide for Claude
+
+  This guide will help you set up a race worker sprite. Follow these steps in order.
+
+  ## Prerequisites
+
+  You need:
+  1. The GROQ_API_KEY (will be provided by the user)
+  2. The RACE_ID for this sprite (one of: zephyrians, kromath, valyrians, mycelings, synthetics)
+
+  ## Step 1: Install System Dependencies
+
+  ```bash
+  sudo apt-get update && sudo apt-get install -y jq
+
+  Step 2: Install Node Dependencies
+
+  cd /home/sprite/Tachyon-Bridge
+  npm install
+
+  Step 3: Build the TypeScript Code
+
+  npm run build
+
+  Step 4: Create the Startup Script
+
+  Replace RACE_ID_HERE with the actual race ID for this sprite (e.g., zephyrians, kromath, valyrians,
+  mycelings, or synthetics).
+
+  cat > /home/sprite/Tachyon-Bridge/start-race.sh << 'EOF'
+  #!/bin/bash
+  cd /home/sprite/Tachyon-Bridge
+  export SPRITE_ROLE=race
+  export RACE_ID=RACE_ID_HERE
+  export PORT=8080
+  export SPRITE_DB_PATH=/home/sprite/Tachyon-Bridge/data/RACE_ID_HERE-state.db
+  export GROQ_API_KEY=YOUR_GROQ_API_KEY_HERE
+  exec node dist/index.js
+  EOF
+
+  IMPORTANT: Edit the file and replace BOTH instances of RACE_ID_HERE with the actual race ID!
+
+  # Example for zephyrians:
+  # sed -i 's/RACE_ID_HERE/zephyrians/g' /home/sprite/Tachyon-Bridge/start-race.sh
+
+  Make it executable:
+
+  chmod +x /home/sprite/Tachyon-Bridge/start-race.sh
+
+  Step 5: Create the Data Directory
+
+  mkdir -p /home/sprite/Tachyon-Bridge/data
+
+  Step 6: Create the Service
+
+  sprite-env services create race-worker \
+    --cmd /home/sprite/Tachyon-Bridge/start-race.sh \
+    --http-port 8080 \
+    --duration 15s
+
+  Step 7: Verify Service is Running
+
+  sprite-env services list
+
+  You should see the service running with status "running".
+
+  Step 8: Create a Checkpoint
+
+  Once verified working, create a checkpoint:
+
+  sprite-env checkpoints create "Race worker for [RACE_ID] initialized and running"
+
+  Environment Variables Summary
+
+  Each race sprite needs:
+  - SPRITE_ROLE=race
+  - RACE_ID= (zephyrians, kromath, valyrians, mycelings, or synthetics)
+  - PORT=8080
+  - SPRITE_DB_PATH=/home/sprite/Tachyon-Bridge/data/-state.db
+  - GROQ_API_KEY=YOUR_GROQ_API_KEY_HERE
+
+  Quick Command Summary for Copy-Paste
+
+  Replace RACE_ID with your race name (e.g., zephyrians):
+
+  # Set your race ID
+  RACE_ID=zephyrians
+
+  # Install dependencies
+  sudo apt-get update && sudo apt-get install -y jq
+  cd /home/sprite/Tachyon-Bridge
+  npm install
+  npm run build
+
+  # Create data directory
+  mkdir -p /home/sprite/Tachyon-Bridge/data
+
+  # Create startup script
+  cat > /home/sprite/Tachyon-Bridge/start-race.sh << EOF
+  #!/bin/bash
+  cd /home/sprite/Tachyon-Bridge
+  export SPRITE_ROLE=race
+  export RACE_ID=${RACE_ID}
+  export PORT=8080
+  export SPRITE_DB_PATH=/home/sprite/Tachyon-Bridge/data/${RACE_ID}-state.db
+  export GROQ_API_KEY=YOUR_GROQ_API_KEY_HERE
+  exec node dist/index.js
+  EOF
+
+  chmod +x /home/sprite/Tachyon-Bridge/start-race.sh
+
+  # Create the service
+  sprite-env services create race-worker \
+    --cmd /home/sprite/Tachyon-Bridge/start-race.sh \
+    --http-port 8080 \
+    --duration 15s
+
+  # Verify
+  sprite-env services list
+
+  # Create checkpoint
+  sprite-env checkpoints create "Race worker for ${RACE_ID} initialized and running"
+
+  Troubleshooting
+
+  If the service fails to start, check the logs:
+  cat /.sprite/logs/services/race-worker.log
+
+  Common issues:
+  - Missing jq: Run step 1 again
+  - Missing node_modules: Run step 2 again
+  - Missing dist folder: Run step 3 again
+  - Wrong RACE_ID: Edit start-race.sh and fix the RACE_ID value

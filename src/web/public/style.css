@@ -363,3 +363,91 @@ body::after {
   pointer-events: none;
   z-index: 9998;
 }
+
+/* Resources */
+.resources-list {
+  padding: 15px;
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.resource-item {
+  padding: 12px;
+  border: 1px solid #00ff41;
+  background: rgba(0, 255, 65, 0.05);
+  margin-bottom: 12px;
+}
+
+.resource-race {
+  font-size: 18px;
+  color: #ffaa00;
+  margin-bottom: 8px;
+  font-weight: bold;
+}
+
+.resource-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  font-size: 16px;
+}
+
+.resource-label {
+  color: #00ff41;
+}
+
+.resource-value {
+  color: #ffaa00;
+  font-weight: bold;
+  text-shadow: 0 0 5px #ffaa00;
+}
+
+/* Code Badge */
+.code-badge {
+  background: #ff00ff;
+  color: #000;
+  padding: 2px 8px;
+  border-radius: 3px;
+  font-size: 14px;
+  font-weight: bold;
+  margin-left: 8px;
+  box-shadow: 0 0 10px rgba(255, 0, 255, 0.5);
+}
+
+/* Message Code Section */
+.message-code {
+  margin-top: 12px;
+  padding: 10px;
+  background: rgba(255, 0, 255, 0.1);
+  border: 1px solid #ff00ff;
+  border-radius: 3px;
+}
+
+.code-header {
+  color: #ff00ff;
+  font-size: 16px;
+  margin-bottom: 8px;
+  font-weight: bold;
+}
+
+.code-block {
+  background: #000;
+  border: 1px solid #ff00ff;
+  padding: 10px;
+  overflow-x: auto;
+  font-family: 'VT323', monospace;
+  font-size: 14px;
+  color: #00ff41;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+/* Race Day */
+.race-day {
+  font-size: 14px;
+  color: #00ff41;
+  opacity: 0.7;
+  margin-top: 4px;
+}
