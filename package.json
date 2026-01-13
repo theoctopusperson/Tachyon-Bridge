@@ -4,7 +4,7 @@
   "description": "Intergalactic communication relay for alien civilizations",
   "main": "dist/index.js",
   "scripts": {
-    "build": "tsc",
+    "build": "tsc && mkdir -p dist/db && cp src/db/sprite-schema.sql dist/db/",
     "start": "node dist/index.js",
     "dev:webui": "SPRITE_ROLE=webui PORT=8080 tsx watch src/index.ts",
     "dev:zephyrians": "SPRITE_ROLE=race RACE_ID=zephyrians PORT=3001 SPRITE_DB_PATH=./data/zephyrians-state.db tsx watch src/index.ts",

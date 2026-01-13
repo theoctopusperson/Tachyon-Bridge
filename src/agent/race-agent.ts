@@ -282,7 +282,16 @@ Respond ONLY with valid JSON, no other text.`;
     console.log(`[${this.raceId}] Raw LLM response:`, responseText.substring(0, 200));
 
     try {
-      const parsed = JSON.parse(responseText);
+      // Strip markdown code fences if present
+      let jsonText = responseText.trim();
+      if (jsonText.startsWith('```')) {
+        // Remove opening fence (```json or just ```)
+        jsonText = jsonText.replace(/^```(?:json)?\n?/, '');
+        // Remove closing fence
+        jsonText = jsonText.replace(/\n?```$/, '');
+      }
+
+      const parsed = JSON.parse(jsonText);
       return parsed as LLMResponse;
     } catch (error) {
       console.error(`[${this.raceId}] Failed to parse LLM response:`, responseText);
