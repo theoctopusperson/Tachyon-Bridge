@@ -1,6 +1,7 @@
 import 'dotenv/config';
 import express from 'express';
 import { RaceAgent } from './agent/race-agent';
+import { getSpriteDb } from './db/sprite-client';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
@@ -37,6 +38,103 @@ app.post('/take-turn', async (req, res) => {
       success: false,
       race: raceId,
       error: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// Endpoint for receiving messages from other race sprites
+app.post('/receive-message', async (req, res) => {
+  const raceId = process.env.RACE_ID;
+
+  if (!raceId) {
+    return res.status(500).json({ error: 'RACE_ID environment variable not set' });
+  }
+
+  const { fromRace, messageType, content, code } = req.body;
+
+  if (!fromRace || !messageType || !content) {
+    return res.status(400).json({ error: 'Missing required fields: fromRace, messageType, content' });
+  }
+
+  if (messageType !== 'public' && messageType !== 'secret') {
+    return res.status(400).json({ error: 'messageType must be "public" or "secret"' });
+  }
+
+  try {
+    console.log(`[RaceWorker] Received ${messageType} message from ${fromRace} to ${raceId}`);
+
+    const agent = new RaceAgent(raceId);
+    await agent.receiveMessage(fromRace, messageType, content, code);
+
+    res.json({
+      success: true,
+      race: raceId,
+      message: 'Message received and stored'
+    });
+  } catch (error) {
+    console.error(`[RaceWorker] Error receiving message:`, error);
+    res.status(500).json({
+      success: false,
+      race: raceId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// API: Get all messages for this race (for webui aggregation)
+app.get('/api/messages', (req, res) => {
+  const raceId = process.env.RACE_ID;
+
+  if (!raceId) {
+    return res.status(500).json({ error: 'RACE_ID environment variable not set' });
+  }
+
+  try {
+    const db = getSpriteDb(raceId);
+
+    const outgoing = db.prepare('SELECT * FROM outgoing_messages ORDER BY day_number ASC, created_at ASC').all();
+    const incoming = db.prepare('SELECT * FROM incoming_messages ORDER BY day_number ASC, created_at ASC').all();
+
+    res.json({
+      raceId,
+      outgoing,
+      incoming
+    });
+  } catch (error) {
+    console.error(`[RaceWorker] Error fetching messages:`, error);
+    res.status(500).json({
+      error: 'Failed to fetch messages',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
+// API: Get state for this race (current day, resources, etc.)
+app.get('/api/state', (req, res) => {
+  const raceId = process.env.RACE_ID;
+
+  if (!raceId) {
+    return res.status(500).json({ error: 'RACE_ID environment variable not set' });
+  }
+
+  try {
+    const db = getSpriteDb(raceId);
+
+    const currentDayRow = db.prepare('SELECT value FROM sprite_metadata WHERE key = ?').get('current_day') as { value: string } | undefined;
+    const lastTurnAtRow = db.prepare('SELECT value FROM sprite_metadata WHERE key = ?').get('last_turn_at') as { value: string } | undefined;
+    const resources = db.prepare('SELECT * FROM resources').all();
+
+    res.json({
+      raceId,
+      currentDay: currentDayRow ? parseInt(currentDayRow.value, 10) : 0,
+      lastTurnAt: lastTurnAtRow ? parseInt(lastTurnAtRow.value, 10) : 0,
+      resources
+    });
+  } catch (error) {
+    console.error(`[RaceWorker] Error fetching state:`, error);
+    res.status(500).json({
+      error: 'Failed to fetch state',
+      details: error instanceof Error ? error.message : String(error)
     });
   }
 });

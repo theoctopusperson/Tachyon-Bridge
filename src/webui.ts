@@ -1,7 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
 import { join } from 'path';
-import { getDbClient, Message, SecretMessage, Event } from './db/client';
 import { RACES } from './races';
 
 const app = express();
@@ -21,40 +20,103 @@ const SPRITE_URLS: Record<string, string> = {
   synthetics: process.env.SPRITE_URL_SYNTHETICS || 'http://localhost:3005',
 };
 
-// API: Get all messages (both public and secret - UI can see all)
+interface OutgoingMessage {
+  id: number;
+  to_race: string;
+  message_type: 'public' | 'secret';
+  content: string;
+  code: string | null;
+  day_number: number;
+  created_at: number;
+}
+
+interface IncomingMessage {
+  id: number;
+  from_race: string;
+  message_type: 'public' | 'secret';
+  content: string;
+  code: string | null;
+  day_number: number;
+  executed: number;
+  execution_result: string | null;
+  created_at: number;
+}
+
+interface RaceSpriteMessages {
+  raceId: string;
+  outgoing: OutgoingMessage[];
+  incoming: IncomingMessage[];
+}
+
+interface Resource {
+  resource_type: string;
+  amount: number;
+}
+
+interface RaceSpriteState {
+  raceId: string;
+  currentDay: number;
+  resources: Resource[];
+  lastTurnAt: number;
+}
+
+// API: Get all messages (aggregate from all race sprites)
 app.get('/api/messages', async (req, res) => {
   try {
-    const db = getDbClient();
+    console.log('[WebUI] Fetching messages from all race sprites...');
 
-    // Get public messages
-    const publicResult = await db.query<Message>(
-      `SELECT m.*,
-        r1.name as from_name,
-        r2.name as to_name,
-        'public' as message_category
-       FROM messages m
-       JOIN races r1 ON m.from_race = r1.id
-       JOIN races r2 ON m.to_race = r2.id
-       ORDER BY m.day_number ASC, m.created_at ASC`
+    const raceIds = Object.keys(SPRITE_URLS);
+    const results = await Promise.allSettled(
+      raceIds.map(async (raceId) => {
+        const url = `${SPRITE_URLS[raceId]}/api/messages`;
+        console.log(`[WebUI] Fetching from ${url}...`);
+
+        const response = await fetch(url);
+        if (!response.ok) {
+          throw new Error(`${raceId} failed: ${response.statusText}`);
+        }
+
+        const data = await response.json() as RaceSpriteMessages;
+        return data;
+      })
     );
 
-    // Get secret messages
-    const secretResult = await db.query<SecretMessage>(
-      `SELECT s.*,
-        r1.name as from_name,
-        r2.name as to_name,
-        'secret' as message_category
-       FROM secret_messages s
-       JOIN races r1 ON s.from_race = r1.id
-       JOIN races r2 ON s.to_race = r2.id
-       ORDER BY s.day_number ASC, s.created_at ASC`
-    );
+    // Combine all messages from all races
+    const allMessages: any[] = [];
 
-    // Combine and sort by day/timestamp
-    const allMessages = [
-      ...publicResult.rows.map(m => ({ ...m, category: 'public' })),
-      ...secretResult.rows.map(m => ({ ...m, category: 'secret' }))
-    ].sort((a, b) => {
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      const raceId = raceIds[i];
+
+      if (result.status === 'fulfilled') {
+        const { outgoing, incoming } = result.value;
+
+        // Add outgoing messages (messages this race sent)
+        for (const msg of outgoing) {
+          allMessages.push({
+            id: `${raceId}-out-${msg.id}`,
+            from_race: raceId,
+            to_race: msg.to_race,
+            message_type: msg.message_type,
+            content: msg.content,
+            code: msg.code,
+            day_number: msg.day_number,
+            created_at: new Date(msg.created_at).toISOString(),
+            category: msg.message_type,
+            from_name: RACES.find(r => r.id === raceId)?.name || raceId,
+            to_name: RACES.find(r => r.id === msg.to_race)?.name || msg.to_race,
+          });
+        }
+
+        // Note: We don't need to add incoming messages because they're duplicates
+        // of outgoing messages from other races
+      } else {
+        console.error(`[WebUI] Failed to fetch messages from ${raceId}:`, result.reason);
+      }
+    }
+
+    // Sort by day number and timestamp
+    allMessages.sort((a, b) => {
       if (a.day_number !== b.day_number) {
         return a.day_number - b.day_number;
       }
@@ -63,7 +125,7 @@ app.get('/api/messages', async (req, res) => {
 
     res.json(allMessages);
   } catch (error) {
-    console.error('Error fetching messages:', error);
+    console.error('[WebUI] Error fetching messages:', error);
     res.status(500).json({ error: 'Failed to fetch messages' });
   }
 });
@@ -71,49 +133,89 @@ app.get('/api/messages', async (req, res) => {
 // API: Get all races
 app.get('/api/races', async (req, res) => {
   try {
-    const db = getDbClient();
-    const result = await db.query('SELECT * FROM races ORDER BY name ASC');
-    res.json(result.rows);
+    // Return race data from RACES constant
+    const racesWithState = await Promise.all(
+      RACES.map(async (race) => {
+        try {
+          const url = `${SPRITE_URLS[race.id]}/api/state`;
+          const response = await fetch(url);
+
+          if (!response.ok) {
+            return {
+              ...race,
+              currentDay: 0,
+              resources: [],
+              lastTurnAt: 0,
+            };
+          }
+
+          const state = await response.json() as RaceSpriteState;
+          return {
+            ...race,
+            currentDay: state.currentDay,
+            resources: state.resources,
+            lastTurnAt: state.lastTurnAt,
+          };
+        } catch (error) {
+          console.error(`[WebUI] Failed to fetch state for ${race.id}:`, error);
+          return {
+            ...race,
+            currentDay: 0,
+            resources: [],
+            lastTurnAt: 0,
+          };
+        }
+      })
+    );
+
+    res.json(racesWithState);
   } catch (error) {
-    console.error('Error fetching races:', error);
+    console.error('[WebUI] Error fetching races:', error);
     res.status(500).json({ error: 'Failed to fetch races' });
   }
 });
 
-// API: Get current cycle state
+// API: Get current cycle state (aggregate from all sprites)
 app.get('/api/cycle', async (req, res) => {
   try {
-    const db = getDbClient();
-    const result = await db.query('SELECT * FROM cycle_state WHERE id = 1');
-    res.json(result.rows[0] || { current_day: 0 });
+    const raceIds = Object.keys(SPRITE_URLS);
+    const results = await Promise.allSettled(
+      raceIds.map(async (raceId) => {
+        const url = `${SPRITE_URLS[raceId]}/api/state`;
+        const response = await fetch(url);
+
+        if (!response.ok) {
+          throw new Error(`${raceId} failed: ${response.statusText}`);
+        }
+
+        const data = await response.json() as RaceSpriteState;
+        return data.currentDay;
+      })
+    );
+
+    // Get the maximum day number across all sprites
+    let maxDay = 0;
+    for (const result of results) {
+      if (result.status === 'fulfilled' && result.value > maxDay) {
+        maxDay = result.value;
+      }
+    }
+
+    res.json({ current_day: maxDay });
   } catch (error) {
-    console.error('Error fetching cycle state:', error);
+    console.error('[WebUI] Error fetching cycle state:', error);
     res.status(500).json({ error: 'Failed to fetch cycle state' });
   }
 });
 
-// API: Get events
+// API: Get events (no longer stored in central DB - would need to aggregate from action logs)
 app.get('/api/events', async (req, res) => {
   try {
-    const db = getDbClient();
-    const result = await db.query<Event>('SELECT * FROM events ORDER BY day_number DESC, created_at DESC LIMIT 50');
-    res.json(result.rows);
+    // For now, return empty array - events would need to be aggregated from action_log tables
+    res.json([]);
   } catch (error) {
-    console.error('Error fetching events:', error);
+    console.error('[WebUI] Error fetching events:', error);
     res.status(500).json({ error: 'Failed to fetch events' });
-  }
-});
-
-// API: Advance to next day
-app.post('/api/cycle/advance', async (req, res) => {
-  try {
-    const db = getDbClient();
-    await db.query('UPDATE cycle_state SET current_day = current_day + 1, last_run_at = NOW() WHERE id = 1');
-    const result = await db.query('SELECT * FROM cycle_state WHERE id = 1');
-    res.json(result.rows[0]);
-  } catch (error) {
-    console.error('Error advancing cycle:', error);
-    res.status(500).json({ error: 'Failed to advance cycle' });
   }
 });
 
@@ -180,7 +282,7 @@ app.post('/api/cycle/run-all', async (req, res) => {
       results: summary,
     });
   } catch (error) {
-    console.error('Error triggering all cycles:', error);
+    console.error('[WebUI] Error triggering all cycles:', error);
     res.status(500).json({
       error: 'Failed to trigger all cycles',
       details: error instanceof Error ? error.message : String(error)

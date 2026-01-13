@@ -31,13 +31,25 @@ export function closeSpriteDb() {
 
 // TypeScript interfaces for SQLite tables
 
-export interface ConversationHistoryRow {
+export interface OutgoingMessageRow {
   id: number;
-  message_type: 'received_public' | 'received_secret' | 'sent_public' | 'sent_secret';
-  from_race: string;
   to_race: string;
+  message_type: 'public' | 'secret';
   content: string;
+  code: string | null;
   day_number: number;
+  created_at: number;
+}
+
+export interface IncomingMessageRow {
+  id: number;
+  from_race: string;
+  message_type: 'public' | 'secret';
+  content: string;
+  code: string | null;
+  day_number: number;
+  executed: number; // 0 or 1 (boolean)
+  execution_result: string | null;
   created_at: number;
 }
 
@@ -87,4 +99,13 @@ export interface StolenSecretRow {
   about_race: string;
   secret_data: string;
   stolen_at: number;
+}
+
+export interface ActionLogRow {
+  id: number;
+  day_number: number;
+  action_type: string;
+  actor_race: string | null;
+  details: string | null; // JSON string
+  created_at: number;
 }

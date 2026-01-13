@@ -1,21 +1,6 @@
-import { Pool } from 'pg';
-
-let pool: Pool | null = null;
-
-export function getDbClient() {
-  if (!pool) {
-    const connectionString = process.env.DATABASE_URL;
-    if (!connectionString) {
-      throw new Error('DATABASE_URL environment variable is not set');
-    }
-
-    pool = new Pool({
-      connectionString,
-      ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
-    });
-  }
-  return pool;
-}
+// Type definitions for database entities
+// These are kept for backwards compatibility but are no longer used
+// in the new pure-SQLite architecture
 
 export interface Race {
   id: string;
