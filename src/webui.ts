@@ -290,6 +290,77 @@ app.post('/api/cycle/run-all', async (req, res) => {
   }
 });
 
+// API: Reset all race sprites to initial state
+app.post('/api/cycle/reset', async (req, res) => {
+  try {
+    console.log('[WebUI] Resetting all race sprites...');
+
+    const raceIds = Object.keys(SPRITE_URLS);
+    const spritesToken = process.env.SPRITES_TOKEN;
+
+    const results = await Promise.allSettled(
+      raceIds.map(async (raceId) => {
+        const url = `${SPRITE_URLS[raceId]}/api/reset`;
+
+        console.log(`[WebUI] Resetting ${raceId} at ${url}...`);
+
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+
+        // Add auth token if available (for production sprites)
+        if (spritesToken) {
+          headers['Authorization'] = `Bearer ${spritesToken}`;
+        }
+
+        const response = await fetch(url, {
+          method: 'POST',
+          headers,
+        });
+
+        if (!response.ok) {
+          throw new Error(`${raceId} failed: ${response.statusText}`);
+        }
+
+        const data = await response.json();
+        return { raceId, success: true, data };
+      })
+    );
+
+    const summary = results.map((result, i) => {
+      if (result.status === 'fulfilled') {
+        return {
+          raceId: raceIds[i],
+          status: result.status,
+          success: result.value.success,
+          data: result.value.data
+        };
+      } else {
+        return {
+          raceId: raceIds[i],
+          status: result.status,
+          error: result.reason.message
+        };
+      }
+    });
+
+    const successCount = results.filter(r => r.status === 'fulfilled').length;
+
+    res.json({
+      success: successCount === raceIds.length,
+      reset: successCount,
+      total: raceIds.length,
+      results: summary,
+    });
+  } catch (error) {
+    console.error('[WebUI] Error resetting all races:', error);
+    res.status(500).json({
+      error: 'Failed to reset all races',
+      details: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
 // Serve the main page
 app.get('/', (req, res) => {
   res.sendFile(join(__dirname, '..', 'src', 'web', 'public', 'index.html'));

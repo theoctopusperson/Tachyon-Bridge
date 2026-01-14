@@ -175,6 +175,17 @@ body {
   box-shadow: 0 0 15px rgba(255, 68, 0, 0.5);
 }
 
+.btn-danger {
+  border-color: #ff0044;
+  color: #ff0044;
+}
+
+.btn-danger:hover {
+  background: #ff0044;
+  color: #000;
+  box-shadow: 0 0 15px rgba(255, 0, 68, 0.5);
+}
+
 .btn:disabled {
   opacity: 0.5;
   cursor: not-allowed;

@@ -139,6 +139,49 @@ app.get('/api/state', (req, res) => {
   }
 });
 
+// API: Reset this race's state (clear all data, reset to day 0)
+app.post('/api/reset', (req, res) => {
+  const raceId = process.env.RACE_ID;
+
+  if (!raceId) {
+    return res.status(500).json({ error: 'RACE_ID environment variable not set' });
+  }
+
+  try {
+    console.log(`[RaceWorker] Resetting state for ${raceId}`);
+    const db = getSpriteDb(raceId);
+
+    // Clear all tables
+    db.prepare('DELETE FROM incoming_messages').run();
+    db.prepare('DELETE FROM outgoing_messages').run();
+    db.prepare('DELETE FROM action_log').run();
+    db.prepare('DELETE FROM resources').run();
+
+    // Reset metadata
+    db.prepare('UPDATE sprite_metadata SET value = ? WHERE key = ?').run('0', 'current_day');
+    db.prepare('UPDATE sprite_metadata SET value = ? WHERE key = ?').run('0', 'last_turn_at');
+
+    // Re-initialize starting resources
+    db.prepare('INSERT INTO resources (resource_type, amount) VALUES (?, ?)').run('energy', 100);
+    db.prepare('INSERT INTO resources (resource_type, amount) VALUES (?, ?)').run('intelligence', 100);
+    db.prepare('INSERT INTO resources (resource_type, amount) VALUES (?, ?)').run('influence', 100);
+
+    console.log(`[RaceWorker] Reset complete for ${raceId}`);
+    res.json({
+      success: true,
+      race: raceId,
+      message: 'State reset successfully'
+    });
+  } catch (error) {
+    console.error(`[RaceWorker] Error resetting state:`, error);
+    res.status(500).json({
+      success: false,
+      race: raceId,
+      error: error instanceof Error ? error.message : String(error)
+    });
+  }
+});
+
 app.listen(PORT, () => {
   const raceId = process.env.RACE_ID || 'UNKNOWN';
   console.log(`[RaceWorker] Race worker for ${raceId} listening on port ${PORT}`);

@@ -8,3 +8,5 @@ dist
 # Local SQLite databases (per-sprite state)
 data/
 *.db
+start-webui.sh
+start-race.sh

@@ -8,6 +8,7 @@ export interface Race {
   culture: string;
   goals: string;
   region: string;
+  url?: string;
   created_at: Date;
 }
 

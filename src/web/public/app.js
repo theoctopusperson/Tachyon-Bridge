@@ -195,6 +195,45 @@ async function runAllTurns() {
   }
 }
 
+// Reset game
+async function resetGame() {
+  if (!confirm('⚠️ RESET GAME TO DAY 0? ⚠️\n\nThis will:\n- Delete ALL messages\n- Reset ALL resources to 100\n- Reset day counter to 0\n- Clear all action logs\n\nThis action CANNOT be undone!\n\nAre you sure?')) {
+    return;
+  }
+
+  // Double confirmation
+  if (!confirm('FINAL CONFIRMATION\n\nThis will permanently delete all game data.\n\nContinue with reset?')) {
+    return;
+  }
+
+  const button = document.getElementById('reset-btn');
+  button.disabled = true;
+  button.textContent = 'RESETTING...';
+
+  try {
+    const response = await fetch('/api/cycle/reset', { method: 'POST' });
+    const result = await response.json();
+
+    if (result.success) {
+      alert(`RESET COMPLETED!\n\nSuccessfully reset ${result.reset}/${result.total} races.\n\nGame has been reset to day 0.`);
+      // Refresh data to show reset state
+      await fetchData();
+    } else {
+      const failedRaces = result.results
+        .filter(r => r.status === 'rejected')
+        .map(r => r.raceId)
+        .join(', ');
+      alert(`PARTIAL FAILURE\n\nReset: ${result.reset}/${result.total}\nFailed races: ${failedRaces}`);
+    }
+  } catch (error) {
+    console.error('Failed to reset:', error);
+    alert('ERROR: Failed to reset game');
+  } finally {
+    button.disabled = false;
+    button.textContent = 'RESET GAME';
+  }
+}
+
 // Escape HTML
 function escapeHtml(text) {
   const div = document.createElement('div');
@@ -205,6 +244,7 @@ function escapeHtml(text) {
 // Event listeners
 document.getElementById('refresh-btn').addEventListener('click', fetchData);
 document.getElementById('run-turns-btn').addEventListener('click', runAllTurns);
+document.getElementById('reset-btn').addEventListener('click', resetGame);
 
 // Update timestamp every second
 setInterval(() => {
