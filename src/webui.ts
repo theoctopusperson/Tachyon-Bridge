@@ -334,29 +334,34 @@ app.get('/api/events', async (req, res) => {
   }
 });
 
-// API: Trigger all race sprites to run their turns
+// Helper: delay function
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+// API: Trigger all race sprites to run their turns (sequentially to avoid rate limits)
 app.post('/api/cycle/run-all', async (req, res) => {
   try {
-    console.log('[WebUI] Triggering all race sprites...');
+    console.log('[WebUI] Triggering all race sprites sequentially...');
 
     const raceIds = Object.keys(SPRITE_URLS);
     const spritesToken = process.env.SPRITES_TOKEN;
+    const results: Array<{ status: 'fulfilled' | 'rejected'; value?: any; reason?: any }> = [];
 
-    const results = await Promise.allSettled(
-      raceIds.map(async (raceId) => {
-        const url = `${SPRITE_URLS[raceId]}/take-turn`;
+    // Run races sequentially with 15 second delay between each to avoid rate limits
+    for (let i = 0; i < raceIds.length; i++) {
+      const raceId = raceIds[i];
+      const url = `${SPRITE_URLS[raceId]}/take-turn`;
 
-        console.log(`[WebUI] Calling ${raceId} at ${url}...`);
+      console.log(`[WebUI] Calling ${raceId} at ${url}...`);
 
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-        };
+      const headers: Record<string, string> = {
+        'Content-Type': 'application/json',
+      };
 
-        // Add auth token if available (for production sprites)
-        if (spritesToken) {
-          headers['Authorization'] = `Bearer ${spritesToken}`;
-        }
+      if (spritesToken) {
+        headers['Authorization'] = `Bearer ${spritesToken}`;
+      }
 
+      try {
         const response = await fetch(url, {
           method: 'POST',
           headers,
@@ -367,9 +372,17 @@ app.post('/api/cycle/run-all', async (req, res) => {
         }
 
         const data = await response.json();
-        return { raceId, success: true, data };
-      })
-    );
+        results.push({ status: 'fulfilled', value: { raceId, success: true, data } });
+      } catch (error) {
+        results.push({ status: 'rejected', reason: error });
+      }
+
+      // Wait 20 seconds before next race (except after the last one) to stay under rate limits
+      if (i < raceIds.length - 1) {
+        console.log(`[WebUI] Waiting 20s before next race...`);
+        await delay(20000);
+      }
+    }
 
     const summary = results.map((result, i) => {
       if (result.status === 'fulfilled') {
@@ -383,7 +396,7 @@ app.post('/api/cycle/run-all', async (req, res) => {
         return {
           raceId: raceIds[i],
           status: result.status,
-          error: result.reason.message
+          error: result.reason?.message || String(result.reason)
         };
       }
     });
