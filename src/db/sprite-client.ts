@@ -2,12 +2,15 @@ import Database from 'better-sqlite3';
 import { readFileSync } from 'fs';
 import { join } from 'path';
 
-let db: Database.Database | null = null;
+// Map of race ID to database connection (supports multi-race per sprite)
+const dbConnections: Map<string, Database.Database> = new Map();
 
 export function getSpriteDb(raceId: string): Database.Database {
+  let db = dbConnections.get(raceId);
+
   if (!db) {
     // SQLite database file location (persistent across sprite wake/sleep)
-    const dbPath = process.env.SPRITE_DB_PATH || `./data/${raceId}-state.db`;
+    const dbPath = `./data/${raceId}-state.db`;
 
     db = new Database(dbPath);
 
@@ -16,16 +19,26 @@ export function getSpriteDb(raceId: string): Database.Database {
     const schema = readFileSync(schemaPath, 'utf-8');
     db.exec(schema);
 
-    console.log(`[SpriteDB] Initialized SQLite database at ${dbPath}`);
+    dbConnections.set(raceId, db);
+    console.log(`[SpriteDB] Initialized SQLite database for ${raceId} at ${dbPath}`);
   }
 
   return db;
 }
 
-export function closeSpriteDb() {
-  if (db) {
-    db.close();
-    db = null;
+export function closeSpriteDb(raceId?: string) {
+  if (raceId) {
+    const db = dbConnections.get(raceId);
+    if (db) {
+      db.close();
+      dbConnections.delete(raceId);
+    }
+  } else {
+    // Close all connections
+    for (const [id, db] of dbConnections) {
+      db.close();
+      dbConnections.delete(id);
+    }
   }
 }
 
