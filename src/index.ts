@@ -18,13 +18,17 @@ if (spriteRole === 'webui') {
   require('./webui');
 } else if (spriteRole === 'race') {
   // Start race worker server
+  // Supports both RACE_ID (single race) and RACE_IDS (comma-separated multiple races)
   const raceId = process.env.RACE_ID;
-  if (!raceId) {
-    console.error('ERROR: RACE_ID environment variable is required for race workers');
-    console.error('Valid values: zephyrians, kromath, valyrians, mycelings, synthetics');
+  const raceIds = process.env.RACE_IDS;
+  if (!raceId && !raceIds) {
+    console.error('ERROR: RACE_ID or RACE_IDS environment variable is required for race workers');
+    console.error('RACE_ID: single race (e.g., "zephyrians")');
+    console.error('RACE_IDS: comma-separated (e.g., "zephyrians,valyrians")');
     process.exit(1);
   }
-  console.log(`[Main] Loading Race Worker for ${raceId}...`);
+  const races = raceIds || raceId;
+  console.log(`[Main] Loading Race Worker for: ${races}...`);
   require('./race-worker');
 } else {
   console.error(`ERROR: Invalid SPRITE_ROLE: ${spriteRole}`);
