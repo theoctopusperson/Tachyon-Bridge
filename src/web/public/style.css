@@ -414,6 +414,16 @@ body::after {
   text-shadow: 0 0 5px #ffaa00;
 }
 
+.resource-value.positive {
+  color: #00ff41;
+  text-shadow: 0 0 5px #00ff41;
+}
+
+.resource-value.negative {
+  color: #ff4444;
+  text-shadow: 0 0 5px #ff4444;
+}
+
 /* Code Badge */
 .code-badge {
   background: #ff00ff;

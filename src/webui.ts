@@ -58,6 +58,78 @@ interface RaceSpriteState {
   lastTurnAt: number;
 }
 
+interface TrustLevel {
+  race_id: string;
+  trust_level: number;
+  is_ally: number;
+  is_enemy: number;
+  notes: string | null;
+  last_updated_day: number;
+}
+
+interface RaceSpriteTrust {
+  raceId: string;
+  trustLevels: TrustLevel[];
+}
+
+// Helper: Fetch trust levels from all races and calculate reputation for each race
+async function calculateReputations(): Promise<Record<string, number>> {
+  const raceIds = Object.keys(SPRITE_URLS);
+
+  // Fetch trust levels from all races
+  const trustResults = await Promise.allSettled(
+    raceIds.map(async (raceId) => {
+      const url = `${SPRITE_URLS[raceId]}/api/trust`;
+      const response = await fetch(url);
+      if (!response.ok) {
+        throw new Error(`${raceId} failed: ${response.statusText}`);
+      }
+      return await response.json() as RaceSpriteTrust;
+    })
+  );
+
+  // Build a map of how much each race trusts each other race
+  // trustMap[fromRace][toRace] = trust level
+  const trustMap: Record<string, Record<string, number>> = {};
+
+  for (let i = 0; i < trustResults.length; i++) {
+    const result = trustResults[i];
+    const raceId = raceIds[i];
+
+    if (result.status === 'fulfilled') {
+      trustMap[raceId] = {};
+      for (const trust of result.value.trustLevels) {
+        trustMap[raceId][trust.race_id] = trust.trust_level;
+      }
+    }
+  }
+
+  // Calculate reputation for each race
+  // Reputation = average of how much OTHER races trust THIS race
+  const reputations: Record<string, number> = {};
+
+  for (const targetRace of raceIds) {
+    const trustValues: number[] = [];
+
+    for (const fromRace of raceIds) {
+      if (fromRace !== targetRace && trustMap[fromRace]) {
+        const trustLevel = trustMap[fromRace][targetRace];
+        if (trustLevel !== undefined) {
+          trustValues.push(trustLevel);
+        }
+      }
+    }
+
+    if (trustValues.length > 0) {
+      reputations[targetRace] = Math.round(trustValues.reduce((a, b) => a + b, 0) / trustValues.length);
+    } else {
+      reputations[targetRace] = 0; // No trust data yet
+    }
+  }
+
+  return reputations;
+}
+
 // API: Get all messages (aggregate from all race sprites)
 app.get('/api/messages', async (req, res) => {
   try {
@@ -128,17 +200,35 @@ app.get('/api/messages', async (req, res) => {
   }
 });
 
-// API: Get all races
+// API: Get all races (with state and reputation)
 app.get('/api/races', async (req, res) => {
   try {
-    // Return race data from RACES constant
-    const racesWithState = await Promise.all(
-      RACES.map(async (race) => {
-        try {
-          const url = `${SPRITE_URLS[race.id]}/api/state`;
-          const response = await fetch(url);
+    // Fetch state for all races and calculate reputations in parallel
+    const [raceStates, reputations] = await Promise.all([
+      Promise.all(
+        RACES.map(async (race) => {
+          try {
+            const url = `${SPRITE_URLS[race.id]}/api/state`;
+            const response = await fetch(url);
 
-          if (!response.ok) {
+            if (!response.ok) {
+              return {
+                ...race,
+                currentDay: 0,
+                resources: [],
+                lastTurnAt: 0,
+              };
+            }
+
+            const state = await response.json() as RaceSpriteState;
+            return {
+              ...race,
+              currentDay: state.currentDay,
+              resources: state.resources,
+              lastTurnAt: state.lastTurnAt,
+            };
+          } catch (error) {
+            console.error(`[WebUI] Failed to fetch state for ${race.id}:`, error);
             return {
               ...race,
               currentDay: 0,
@@ -146,27 +236,18 @@ app.get('/api/races', async (req, res) => {
               lastTurnAt: 0,
             };
           }
+        })
+      ),
+      calculateReputations()
+    ]);
 
-          const state = await response.json() as RaceSpriteState;
-          return {
-            ...race,
-            currentDay: state.currentDay,
-            resources: state.resources,
-            lastTurnAt: state.lastTurnAt,
-          };
-        } catch (error) {
-          console.error(`[WebUI] Failed to fetch state for ${race.id}:`, error);
-          return {
-            ...race,
-            currentDay: 0,
-            resources: [],
-            lastTurnAt: 0,
-          };
-        }
-      })
-    );
+    // Add reputation to each race
+    const racesWithReputation = raceStates.map(race => ({
+      ...race,
+      reputation: reputations[race.id] || 0
+    }));
 
-    res.json(racesWithState);
+    res.json(racesWithReputation);
   } catch (error) {
     console.error('[WebUI] Error fetching races:', error);
     res.status(500).json({ error: 'Failed to fetch races' });

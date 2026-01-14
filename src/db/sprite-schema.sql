@@ -74,10 +74,10 @@ CREATE TABLE IF NOT EXISTS resources (
 );
 
 -- Initialize starting resources
+-- Note: Reputation is calculated from other races' trust levels, not stored here
 INSERT OR IGNORE INTO resources (resource_type, amount) VALUES
   ('energy', 10000),
-  ('intelligence', 0),
-  ('influence', 100);
+  ('intelligence', 0);
 
 -- Stolen secrets: intel stolen from other races
 CREATE TABLE IF NOT EXISTS stolen_secrets (

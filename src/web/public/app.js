@@ -41,7 +41,11 @@ function renderResources() {
     const resources = race.resources || [];
     const energy = resources.find(r => r.resource_type === 'energy')?.amount || 0;
     const intelligence = resources.find(r => r.resource_type === 'intelligence')?.amount || 0;
-    const influence = resources.find(r => r.resource_type === 'influence')?.amount || 0;
+    // Reputation is calculated from trust levels, not stored as a resource
+    const reputation = race.reputation || 0;
+
+    // Format reputation with sign for positive values
+    const reputationDisplay = reputation > 0 ? `+${reputation}` : reputation.toString();
 
     return `
       <div class="resource-item">
@@ -55,8 +59,8 @@ function renderResources() {
           <div class="resource-value">${intelligence}</div>
         </div>
         <div class="resource-bar">
-          <div class="resource-label">👑 Influence:</div>
-          <div class="resource-value">${influence}</div>
+          <div class="resource-label">⭐ Reputation:</div>
+          <div class="resource-value ${reputation > 0 ? 'positive' : reputation < 0 ? 'negative' : ''}">${reputationDisplay}</div>
         </div>
       </div>
     `;

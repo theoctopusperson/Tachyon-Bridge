@@ -1,25 +1,60 @@
 import 'dotenv/config';
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
 import { RaceAgent } from './agent/race-agent';
 import { getSpriteDb } from './db/sprite-client';
+import { RACES } from './races';
 
 const app = express();
 const PORT = process.env.PORT || 8080;
 
 app.use(express.json());
 
-// Health check endpoint
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', role: 'race-worker', raceId: process.env.RACE_ID });
-});
+// Determine which races this worker handles
+// RACE_IDS (comma-separated) takes priority, falls back to RACE_ID (single)
+const configuredRaceIds = process.env.RACE_IDS
+  ? process.env.RACE_IDS.split(',').map(id => id.trim())
+  : process.env.RACE_ID
+    ? [process.env.RACE_ID]
+    : [];
 
-// Main endpoint for race sprites - executes one turn
-app.post('/take-turn', async (req, res) => {
-  const raceId = process.env.RACE_ID;
+// Validate race IDs against known races
+const validRaceIds = configuredRaceIds.filter(id => RACES.some(r => r.id === id));
+
+if (validRaceIds.length === 0) {
+  console.error('[RaceWorker] No valid race IDs configured. Set RACE_ID or RACE_IDS env var.');
+  process.exit(1);
+}
+
+console.log(`[RaceWorker] Configured to handle races: ${validRaceIds.join(', ')}`);
+
+// Middleware to extract and validate race ID from path
+function extractRaceId(req: Request, res: Response, next: NextFunction) {
+  const raceId = req.params.raceId;
 
   if (!raceId) {
-    return res.status(500).json({ error: 'RACE_ID environment variable not set' });
+    return res.status(400).json({ error: 'Race ID required in path' });
   }
+
+  if (!validRaceIds.includes(raceId)) {
+    return res.status(404).json({ error: `Race ${raceId} not handled by this worker` });
+  }
+
+  // Attach raceId to request for use in handlers
+  (req as any).raceId = raceId;
+  next();
+}
+
+// Health check endpoint (no race ID required)
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', role: 'race-worker', races: validRaceIds });
+});
+
+// All race-specific endpoints use /:raceId prefix
+const raceRouter = express.Router({ mergeParams: true });
+
+// Main endpoint for race sprites - executes one turn
+raceRouter.post('/take-turn', async (req, res) => {
+  const raceId = (req as any).raceId;
 
   try {
     console.log(`[RaceWorker] Received /take-turn request for ${raceId}`);
@@ -33,7 +68,7 @@ app.post('/take-turn', async (req, res) => {
       message: 'Turn completed successfully'
     });
   } catch (error) {
-    console.error(`[RaceWorker] Error during turn:`, error);
+    console.error(`[RaceWorker] Error during turn for ${raceId}:`, error);
     res.status(500).json({
       success: false,
       race: raceId,
@@ -43,13 +78,8 @@ app.post('/take-turn', async (req, res) => {
 });
 
 // Endpoint for receiving messages from other race sprites
-app.post('/receive-message', async (req, res) => {
-  const raceId = process.env.RACE_ID;
-
-  if (!raceId) {
-    return res.status(500).json({ error: 'RACE_ID environment variable not set' });
-  }
-
+raceRouter.post('/receive-message', async (req, res) => {
+  const raceId = (req as any).raceId;
   const { fromRace, messageType, content, code } = req.body;
 
   if (!fromRace || !messageType || !content) {
@@ -72,7 +102,7 @@ app.post('/receive-message', async (req, res) => {
       message: 'Message received and stored'
     });
   } catch (error) {
-    console.error(`[RaceWorker] Error receiving message:`, error);
+    console.error(`[RaceWorker] Error receiving message for ${raceId}:`, error);
     res.status(500).json({
       success: false,
       race: raceId,
@@ -82,12 +112,8 @@ app.post('/receive-message', async (req, res) => {
 });
 
 // API: Get all messages for this race (for webui aggregation)
-app.get('/api/messages', (req, res) => {
-  const raceId = process.env.RACE_ID;
-
-  if (!raceId) {
-    return res.status(500).json({ error: 'RACE_ID environment variable not set' });
-  }
+raceRouter.get('/api/messages', (req, res) => {
+  const raceId = (req as any).raceId;
 
   try {
     const db = getSpriteDb(raceId);
@@ -101,7 +127,7 @@ app.get('/api/messages', (req, res) => {
       incoming
     });
   } catch (error) {
-    console.error(`[RaceWorker] Error fetching messages:`, error);
+    console.error(`[RaceWorker] Error fetching messages for ${raceId}:`, error);
     res.status(500).json({
       error: 'Failed to fetch messages',
       details: error instanceof Error ? error.message : String(error)
@@ -110,12 +136,8 @@ app.get('/api/messages', (req, res) => {
 });
 
 // API: Get state for this race (current day, resources, etc.)
-app.get('/api/state', (req, res) => {
-  const raceId = process.env.RACE_ID;
-
-  if (!raceId) {
-    return res.status(500).json({ error: 'RACE_ID environment variable not set' });
-  }
+raceRouter.get('/api/state', (req, res) => {
+  const raceId = (req as any).raceId;
 
   try {
     const db = getSpriteDb(raceId);
@@ -131,7 +153,7 @@ app.get('/api/state', (req, res) => {
       resources
     });
   } catch (error) {
-    console.error(`[RaceWorker] Error fetching state:`, error);
+    console.error(`[RaceWorker] Error fetching state for ${raceId}:`, error);
     res.status(500).json({
       error: 'Failed to fetch state',
       details: error instanceof Error ? error.message : String(error)
@@ -139,13 +161,36 @@ app.get('/api/state', (req, res) => {
   }
 });
 
-// API: Reset this race's state (clear all data, reset to day 0)
-app.post('/api/reset', (req, res) => {
-  const raceId = process.env.RACE_ID;
+// API: Get this race's trust levels toward other races
+// Used by webui to calculate each race's reputation (average of how much others trust them)
+raceRouter.get('/api/trust', (req, res) => {
+  const raceId = (req as any).raceId;
 
-  if (!raceId) {
-    return res.status(500).json({ error: 'RACE_ID environment variable not set' });
+  try {
+    const db = getSpriteDb(raceId);
+
+    // Get all relationships (trust levels this race has toward others)
+    const relationships = db.prepare(`
+      SELECT race_id, trust_level, is_ally, is_enemy, notes, last_updated_day
+      FROM relationships
+    `).all();
+
+    res.json({
+      raceId,
+      trustLevels: relationships
+    });
+  } catch (error) {
+    console.error(`[RaceWorker] Error fetching trust levels for ${raceId}:`, error);
+    res.status(500).json({
+      error: 'Failed to fetch trust levels',
+      details: error instanceof Error ? error.message : String(error)
+    });
   }
+});
+
+// API: Reset this race's state (clear all data, reset to day 0)
+raceRouter.post('/api/reset', (req, res) => {
+  const raceId = (req as any).raceId;
 
   try {
     console.log(`[RaceWorker] Resetting state for ${raceId}`);
@@ -156,15 +201,16 @@ app.post('/api/reset', (req, res) => {
     db.prepare('DELETE FROM outgoing_messages').run();
     db.prepare('DELETE FROM action_log').run();
     db.prepare('DELETE FROM resources').run();
+    db.prepare('DELETE FROM relationships').run();
 
     // Reset metadata
     db.prepare('UPDATE sprite_metadata SET value = ? WHERE key = ?').run('0', 'current_day');
     db.prepare('UPDATE sprite_metadata SET value = ? WHERE key = ?').run('0', 'last_turn_at');
 
-    // Re-initialize starting resources
-    db.prepare('INSERT INTO resources (resource_type, amount) VALUES (?, ?)').run('energy', 100);
-    db.prepare('INSERT INTO resources (resource_type, amount) VALUES (?, ?)').run('intelligence', 100);
-    db.prepare('INSERT INTO resources (resource_type, amount) VALUES (?, ?)').run('influence', 100);
+    // Re-initialize starting resources (matching sprite-schema.sql)
+    // Note: Reputation is calculated from other races' trust levels, not stored here
+    db.prepare('INSERT INTO resources (resource_type, amount) VALUES (?, ?)').run('energy', 10000);
+    db.prepare('INSERT INTO resources (resource_type, amount) VALUES (?, ?)').run('intelligence', 0);
 
     console.log(`[RaceWorker] Reset complete for ${raceId}`);
     res.json({
@@ -173,7 +219,7 @@ app.post('/api/reset', (req, res) => {
       message: 'State reset successfully'
     });
   } catch (error) {
-    console.error(`[RaceWorker] Error resetting state:`, error);
+    console.error(`[RaceWorker] Error resetting state for ${raceId}:`, error);
     res.status(500).json({
       success: false,
       race: raceId,
@@ -182,8 +228,11 @@ app.post('/api/reset', (req, res) => {
   }
 });
 
+// Mount race router with race ID parameter
+app.use('/:raceId', extractRaceId, raceRouter);
+
 app.listen(PORT, () => {
-  const raceId = process.env.RACE_ID || 'UNKNOWN';
-  console.log(`[RaceWorker] Race worker for ${raceId} listening on port ${PORT}`);
-  console.log(`[RaceWorker] Ready to process turns at POST /take-turn`);
+  console.log(`[RaceWorker] Multi-race worker listening on port ${PORT}`);
+  console.log(`[RaceWorker] Handling races: ${validRaceIds.join(', ')}`);
+  console.log(`[RaceWorker] Endpoints available at /:raceId/take-turn, /:raceId/api/messages, etc.`);
 });
