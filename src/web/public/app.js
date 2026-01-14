@@ -101,10 +101,35 @@ function renderMessages() {
 
         let codeSection = '';
         if (msg.code) {
+          // Determine execution status
+          let executionStatus = '';
+          if (msg.executed === true) {
+            executionStatus = `
+              <div class="execution-status executed">
+                ✅ CODE EXECUTED BY ${msg.to_name}
+                ${msg.execution_result ? `<pre class="execution-result">${escapeHtml(msg.execution_result)}</pre>` : ''}
+              </div>
+            `;
+          } else if (msg.executed === false) {
+            executionStatus = `
+              <div class="execution-status rejected">
+                ❌ CODE REJECTED BY ${msg.to_name}
+                ${msg.execution_result ? `<div class="rejection-reason">${escapeHtml(msg.execution_result)}</div>` : ''}
+              </div>
+            `;
+          } else {
+            executionStatus = `
+              <div class="execution-status pending">
+                ⏳ AWAITING DECISION FROM ${msg.to_name}
+              </div>
+            `;
+          }
+
           codeSection = `
             <div class="message-code">
               <div class="code-header">📦 ATTACHED CODE:</div>
               <pre class="code-block">${escapeHtml(msg.code)}</pre>
+              ${executionStatus}
             </div>
           `;
         }

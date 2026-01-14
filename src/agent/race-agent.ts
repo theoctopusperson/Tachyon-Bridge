@@ -365,6 +365,12 @@ Respond ONLY with valid JSON, no other text.`;
     // 2. Process public messages
     if (response.public_messages) {
       for (const msg of response.public_messages) {
+        // Skip messages to self
+        if (msg.to === this.raceId) {
+          console.warn(`[${this.raceId}] Skipping public message to self`);
+          continue;
+        }
+
         const targetRace = getRaceById(msg.to);
         if (!targetRace) {
           console.warn(`[${this.raceId}] Skipping public message to unknown race: ${msg.to}`);
@@ -387,6 +393,12 @@ Respond ONLY with valid JSON, no other text.`;
     // 3. Process secret messages
     if (response.secret_messages) {
       for (const msg of response.secret_messages) {
+        // Skip messages to self
+        if (msg.to === this.raceId) {
+          console.warn(`[${this.raceId}] Skipping secret message to self`);
+          continue;
+        }
+
         const targetRace = getRaceById(msg.to);
         if (!targetRace) {
           console.warn(`[${this.raceId}] Skipping secret message to unknown race: ${msg.to}`);

@@ -151,7 +151,31 @@ app.get('/api/messages', async (req, res) => {
       })
     );
 
-    // Combine all messages from all races
+    // First pass: build a map of execution status from incoming messages
+    // Key: "fromRace-toRace-dayNumber-contentHash" -> {executed, execution_result}
+    const executionStatusMap: Record<string, { executed: boolean; execution_result: string | null }> = {};
+
+    for (let i = 0; i < results.length; i++) {
+      const result = results[i];
+      const recipientRaceId = raceIds[i];
+
+      if (result.status === 'fulfilled') {
+        const { incoming } = result.value;
+
+        for (const msg of incoming) {
+          if (msg.code) {
+            // Create a key to match with outgoing messages
+            const key = `${msg.from_race}-${recipientRaceId}-${msg.day_number}-${msg.content.substring(0, 50)}`;
+            executionStatusMap[key] = {
+              executed: msg.executed === 1,
+              execution_result: msg.execution_result
+            };
+          }
+        }
+      }
+    }
+
+    // Second pass: combine all outgoing messages with execution status
     const allMessages: any[] = [];
 
     for (let i = 0; i < results.length; i++) {
@@ -159,10 +183,23 @@ app.get('/api/messages', async (req, res) => {
       const raceId = raceIds[i];
 
       if (result.status === 'fulfilled') {
-        const { outgoing, incoming } = result.value;
+        const { outgoing } = result.value;
 
         // Add outgoing messages (messages this race sent)
         for (const msg of outgoing) {
+          // Look up execution status if this message has code
+          let executed: boolean | null = null;
+          let execution_result: string | null = null;
+
+          if (msg.code) {
+            const key = `${raceId}-${msg.to_race}-${msg.day_number}-${msg.content.substring(0, 50)}`;
+            const status = executionStatusMap[key];
+            if (status) {
+              executed = status.executed;
+              execution_result = status.execution_result;
+            }
+          }
+
           allMessages.push({
             id: `${raceId}-out-${msg.id}`,
             from_race: raceId,
@@ -175,11 +212,10 @@ app.get('/api/messages', async (req, res) => {
             category: msg.message_type,
             from_name: RACES.find(r => r.id === raceId)?.name || raceId,
             to_name: RACES.find(r => r.id === msg.to_race)?.name || msg.to_race,
+            executed,
+            execution_result,
           });
         }
-
-        // Note: We don't need to add incoming messages because they're duplicates
-        // of outgoing messages from other races
       } else {
         console.error(`[WebUI] Failed to fetch messages from ${raceId}:`, result.reason);
       }
