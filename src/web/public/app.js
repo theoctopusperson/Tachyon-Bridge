@@ -23,22 +23,9 @@ async function fetchData() {
   }
 }
 
-// Render races list
+// Render races list (disabled - panel removed)
 function renderRaces() {
-  const racesList = document.getElementById('races-list');
-
-  if (races.length === 0) {
-    racesList.innerHTML = '<div class="loading">NO CIVILIZATIONS DETECTED</div>';
-    return;
-  }
-
-  racesList.innerHTML = races.map(race => `
-    <div class="race-item">
-      <div class="race-name">${race.name}</div>
-      <div class="race-region">REGION: ${race.region.toUpperCase()}</div>
-      <div class="race-day">DAY: ${race.currentDay || 0}</div>
-    </div>
-  `).join('');
+  // Races panel removed from UI
 }
 
 // Render resources
@@ -185,6 +172,8 @@ async function runAllTurns() {
         .map(r => r.raceId)
         .join(', ');
       alert(`PARTIAL FAILURE\n\nSucceeded: ${result.triggered}/${result.total}\nFailed races: ${failedRaces}`);
+      // Still refresh data even on partial success
+      await fetchData();
     }
   } catch (error) {
     console.error('Failed to run turns:', error);
@@ -252,6 +241,9 @@ setInterval(() => {
   const timestamp = now.toISOString().substring(11, 19);
   document.getElementById('timestamp').textContent = timestamp;
 }, 1000);
+
+// Auto-refresh data every 30 seconds
+setInterval(fetchData, 30000);
 
 // Initial load
 fetchData();

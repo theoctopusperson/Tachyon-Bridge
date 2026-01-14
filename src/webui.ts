@@ -11,14 +11,12 @@ app.use(express.json());
 // Serve static files
 app.use(express.static(join(__dirname, '..', 'src', 'web', 'public')));
 
-// Get sprite URLs from environment variables
-const SPRITE_URLS: Record<string, string> = {
-  zephyrians: process.env.SPRITE_URL_ZEPHYRIANS || 'http://localhost:3001',
-  kromath: process.env.SPRITE_URL_KROMATH || 'http://localhost:3002',
-  valyrians: process.env.SPRITE_URL_VALYRIANS || 'http://localhost:3003',
-  mycelings: process.env.SPRITE_URL_MYCELINGS || 'http://localhost:3004',
-  synthetics: process.env.SPRITE_URL_SYNTHETICS || 'http://localhost:3005',
-};
+// Get sprite URLs from RACES array (only active races)
+const SPRITE_URLS: Record<string, string> = {};
+for (const race of RACES) {
+  const envKey = `SPRITE_URL_${race.id.toUpperCase()}`;
+  SPRITE_URLS[race.id] = process.env[envKey] || race.url || `http://localhost:${3000 + Object.keys(SPRITE_URLS).length + 1}`;
+}
 
 interface OutgoingMessage {
   id: number;

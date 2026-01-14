@@ -14,14 +14,12 @@ interface LLMResponse {
   resource_actions?: { action: 'steal' | 'gift'; target_race: string; resource_type: string; amount: number }[];
 }
 
-// Get sprite URLs from environment
-const SPRITE_URLS: Record<string, string> = {
-  zephyrians: process.env.SPRITE_URL_ZEPHYRIANS || 'http://localhost:3001',
-  kromath: process.env.SPRITE_URL_KROMATH || 'http://localhost:3002',
-  valyrians: process.env.SPRITE_URL_VALYRIANS || 'http://localhost:3003',
-  mycelings: process.env.SPRITE_URL_MYCELINGS || 'http://localhost:3004',
-  synthetics: process.env.SPRITE_URL_SYNTHETICS || 'http://localhost:3005',
-};
+// Get sprite URLs from RACES array (only active races)
+const SPRITE_URLS: Record<string, string> = {};
+for (const race of RACES) {
+  const envKey = `SPRITE_URL_${race.id.toUpperCase()}`;
+  SPRITE_URLS[race.id] = process.env[envKey] || race.url || `http://localhost:${3000 + Object.keys(SPRITE_URLS).length + 1}`;
+}
 
 export class RaceAgent {
   private raceId: string;
@@ -81,17 +79,17 @@ export class RaceAgent {
       ORDER BY day_number ASC, created_at ASC
     `).all() as IncomingMessageRow[];
 
-    // Get all messages from current day for context
-    const todaysMessages = this.spriteDb.prepare(`
+    // Get all recent messages (last 2 days) for context - this ensures we see messages from other races
+    const recentMessages = this.spriteDb.prepare(`
       SELECT * FROM incoming_messages
-      WHERE day_number = ?
-      ORDER BY created_at ASC
-    `).all(currentDay) as IncomingMessageRow[];
+      WHERE day_number >= ?
+      ORDER BY day_number ASC, created_at ASC
+    `).all(Math.max(0, currentDay - 1)) as IncomingMessageRow[];
 
-    console.log(`[${this.raceId}] Found ${todaysMessages.length} messages for today, ${unexecutedMessages.length} with unexecuted code`);
+    console.log(`[${this.raceId}] Found ${recentMessages.length} recent messages, ${unexecutedMessages.length} with unexecuted code`);
 
     // Build contextual LLM prompt
-    const prompt = this.buildPrompt(todaysMessages, unexecutedMessages, currentDay);
+    const prompt = this.buildPrompt(recentMessages, unexecutedMessages, currentDay);
 
     // Generate response from LLM
     console.log(`[${this.raceId}] Generating response...`);
@@ -120,7 +118,7 @@ export class RaceAgent {
     this.spriteDb.prepare('UPDATE sprite_metadata SET value = ? WHERE key = ?').run(timestamp.toString(), 'last_turn_at');
   }
 
-  private buildPrompt(todaysMessages: IncomingMessageRow[], unexecutedMessages: IncomingMessageRow[], currentDay: number): string {
+  private buildPrompt(recentMessages: IncomingMessageRow[], unexecutedMessages: IncomingMessageRow[], currentDay: number): string {
     const race = getRaceById(this.raceId)!;
 
     // Get recent outgoing messages (last 10)
@@ -190,7 +188,7 @@ export class RaceAgent {
     const goalsText = goals.length > 0 ? goals.map(g => `- ${g.description} (Priority: ${g.priority})`).join('\n') : 'No active goals';
 
     // Format today's messages
-    const todaysMessagesText = todaysMessages
+    const recentMessagesText = recentMessages
       .map(m => {
         const type = m.message_type === 'secret' ? '🔒 SECRET' : 'PUBLIC';
         const codeNote = m.code ? ' [+CODE]' : '';
@@ -226,7 +224,7 @@ RECENT CONVERSATION HISTORY:
 ${historyText || 'No previous conversations'}
 
 NEW MESSAGES THIS TURN:
-${todaysMessagesText || 'No new messages this turn.'}
+${recentMessagesText || 'No new messages this turn.'}
 
 CODE EXECUTION DECISIONS NEEDED:
 ${codeDecisionsText}
